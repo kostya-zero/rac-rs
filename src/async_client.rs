@@ -57,6 +57,14 @@ impl Client {
         }
     }
 
+    /// Updates the client's credentials.
+    ///
+    /// This method allows you to change the username and password for the client.
+    pub fn update_credentials(&mut self, credentials: Credentials) {
+        self.username = credentials.username;
+        self.password = credentials.password;
+    }
+
     /// Attempts to establish a TCP connection to the RAC server.
     async fn get_stream(&self) -> Result<TcpStream, ClientError> {
         match TcpStream::connect(&self.address).await {
