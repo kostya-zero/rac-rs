@@ -15,6 +15,7 @@ A Rust client library for RAC (Real Address Chat) protocol.
 ## Features
 
 - Support for both `RAC` and `RACv2` protocols.
+- TLS support for secure connections.
 - Synchronous (`Client`) and Asynchronous (`async_client`) APIs.
 - User registration and authentication for `RACv2`.
 - Fetch all or only new messages.
