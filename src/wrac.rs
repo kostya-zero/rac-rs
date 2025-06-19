@@ -1,0 +1,317 @@
+﻿use crate::shared::{ClientError, Connection, Credentials};
+use std::borrow::Cow;
+use std::net::TcpStream;
+use tungstenite::{client::IntoClientRequest, connect, stream::MaybeTlsStream, Message, WebSocket};
+
+/// Concrete WebSocket stream type we deal with.
+type WsStream = WebSocket<MaybeTlsStream<TcpStream>>;
+
+/// A WebSocket client for interacting with a RAC server.
+///
+/// The `WClient` provides methods to connect to a RAC server over WebSockets,
+/// send and receive messages, and manage user registration for `RACv2` connections.
+///
+/// # Example
+///
+/// ```no_run
+/// use rac_rs::wrac::WClient;
+/// use rac_rs::shared::{Connection, Credentials};
+///
+/// # fn run() -> Result<(), rac_rs::shared::ClientError> {
+/// let credentials = Credentials {
+///     username: "test_user".to_string(),
+///     password: Some("password123".to_string()),
+/// };
+///
+/// let mut client = WClient::new(
+///     "127.0.0.1:52666".to_string(),
+///     credentials,
+///     Connection::RACv2,
+///     false,
+/// );
+///
+/// client.test_connection()?;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Clone)]
+pub struct WClient {
+    /// The current size of messages in the client.
+    current_messages_size: usize,
+    /// The address of the RAC server. Can be a full `ws(s)://` URL or just `host:port`.
+    address: String,
+    /// Whether to use TLS encryption (`wss://`).
+    use_tls: bool,
+    /// The username for authentication.
+    username: String,
+    /// The password for authentication, if required.
+    password: Option<String>,
+    /// The type of connection to the RAC server.
+    connection: Connection,
+}
+
+impl WClient {
+    /// Creates a new `WClient` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` can be one of:
+    ///   * a full URL (`ws://host:port/path`, `wss://host:port/path`)
+    ///   * or just `host:port` (path defaults to `/`).
+    /// * `credentials` - The username and optional password.
+    /// * `connection` - The type of connection (`RAC` or `RACv2`).
+    /// * `use_tls` forces `wss://` when the input lacks a scheme.
+    pub fn new(
+        address: String,
+        credentials: Credentials,
+        connection: Connection,
+        use_tls: bool,
+    ) -> Self {
+        Self {
+            current_messages_size: 0,
+            address,
+            use_tls,
+            username: credentials.username,
+            password: credentials.password,
+            connection,
+        }
+    }
+
+    /// Turn the user‑supplied `address` into a valid WebSocket URL.
+    fn build_url(&self) -> Result<String, ClientError> {
+        if self.address.starts_with("ws://") || self.address.starts_with("wss://") {
+            return Ok(self.address.to_string());
+        }
+        let scheme = if self.use_tls { "wss" } else { "ws" };
+        Ok(format!("{scheme}://{}/", self.address))
+    }
+
+    /// Establishes a WebSocket connection to the RAC server.
+    fn get_ws(&self) -> Result<WsStream, ClientError> {
+        let url = self.build_url()?;
+        let (ws, _resp) = connect(url.into_client_request().unwrap())
+            .map_err(|e| ClientError::TlsInitializationError(e.to_string()))?;
+        Ok(ws)
+    }
+
+    /// Tests the connection to the WRAC server.
+    ///
+    /// This method attempts to establish a WebSocket connection and returns `Ok(())` if successful.
+    pub fn test_connection(&self) -> Result<(), ClientError> {
+        let mut ws = self.get_ws()?;
+        ws.close(None).ok();
+        Ok(())
+    }
+
+    /// Fetches the total size of all messages on the server and updates the client's internal state.
+    ///
+    /// This is useful for determining the amount of data to fetch for all messages.
+    pub fn register_user(&mut self) -> Result<(), ClientError> {
+        let mut ws = self.get_ws()?;
+        if self.connection == Connection::RACv2 && self.password.is_some() {
+            let payload = format!(
+                "\x03{}\n{}",
+                self.username,
+                self.password.as_deref().unwrap()
+            );
+            ws.send(Message::Binary(payload.into()))
+                .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+
+            if let Ok(Message::Binary(buf)) = ws.read() {
+                return match buf.first() {
+                    Some(0x01) => Err(ClientError::UsernameAlreadyTaken),
+                    Some(code) => Err(ClientError::UnexpectedResponse(format!("0x{code:02x}"))),
+                    None => Ok(()),
+                };
+            }
+            ws.close(None).ok();
+            return Ok(());
+        }
+        Err(ClientError::IncorrectConnectionType)
+    }
+
+    /// Fetches the total size of all messages on the server and updates the client's internal state.
+    ///
+    /// This is useful for determining the amount of data to fetch for all messages.
+    pub fn fetch_messages_size(&mut self) -> Result<(), ClientError> {
+        let mut ws = self.get_ws()?;
+        ws.send(Message::Binary(vec![0x00].into()))
+            .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+        let msg = ws
+            .read()
+            .map_err(|e| ClientError::WsReadError(e.to_string()))?;
+        let txt = match msg {
+            Message::Text(t) => t.to_string(),
+            Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
+            _ => String::new(),
+        };
+        self.current_messages_size = txt
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| ClientError::ParseError("Failed to parse messages size".into()))?;
+        ws.close(None).ok();
+        Ok(())
+    }
+
+    /// Fetches all messages from the RAC server.
+    ///
+    /// This method retrieves all messages stored on the server and updates the
+    /// client's internal message size tracker.
+    pub fn fetch_all_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
+        let mut ws = self.get_ws()?;
+        ws.send(Message::Binary(vec![0x00].into()))
+            .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+        let size_msg = ws
+            .read()
+            .map_err(|e| ClientError::WsReadError(e.to_string()))?;
+        let size: usize = match &size_msg {
+            Message::Text(t) => t
+                .trim()
+                .parse()
+                .map_err(|_| ClientError::ParseError("size".into()))?,
+            Message::Binary(b) => String::from_utf8_lossy(b)
+                .trim()
+                .parse()
+                .map_err(|_| ClientError::ParseError("size".into()))?,
+            _ => return Err(ClientError::ParseError("Unexpected WS message".into())),
+        };
+        self.current_messages_size = size;
+        ws.send(Message::Binary(vec![0x01].into()))
+            .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+        let all_msg = ws
+            .read()
+            .map_err(|e| ClientError::WsReadError(e.to_string()))?;
+        let payload = match all_msg {
+            Message::Text(t) => t.to_string(),
+            Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
+            _ => String::new(),
+        };
+        ws.close(None).ok();
+        Ok(payload
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|s| Cow::Owned(s.to_string()))
+            .collect())
+    }
+
+    /// Fetches only new messages that have arrived since the last fetch.
+    ///
+    /// This method compares the current message size on the server with the client's
+    /// stored size and retrieves only the difference. The client's internal message
+    /// size tracker is updated upon successful fetch.
+    pub fn fetch_new_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
+        let mut ws = self.get_ws()?;
+        ws.send(Message::Binary(vec![0x00].into()))
+            .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+        let size_msg = ws
+            .read()
+            .map_err(|e| ClientError::WsReadError(e.to_string()))?;
+        let size: usize = match &size_msg {
+            Message::Text(t) => t
+                .trim()
+                .parse()
+                .map_err(|_| ClientError::ParseError("size".into()))?,
+            Message::Binary(b) => String::from_utf8_lossy(b)
+                .trim()
+                .parse()
+                .map_err(|_| ClientError::ParseError("size".into()))?,
+            _ => return Err(ClientError::ParseError("Unexpected WS message".into())),
+        };
+        ws.send(Message::Binary(
+            format!("\x02{}", self.current_messages_size).into(),
+        ))
+        .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+        let diff_msg = ws
+            .read()
+            .map_err(|e| ClientError::WsReadError(e.to_string()))?;
+        let payload = match diff_msg {
+            Message::Text(t) => t.to_string(),
+            Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
+            _ => String::new(),
+        };
+        self.current_messages_size = size;
+        ws.close(None).ok();
+        Ok(payload
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|s| Cow::Owned(s.to_string()))
+            .collect())
+    }
+
+    /// Sends a message to the server.
+    ///
+    /// The placeholder `{username}` in the message will be replaced with the client's username.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use rac_rs::wrac::WClient;
+    /// # use rac_rs::shared::{ClientError, Connection, Credentials};
+    /// # async fn run() -> Result<(), ClientError> {
+    /// # let client = WClient::new("".to_string(), Default::default(), Connection::RAC, false);
+    /// client.send_message("<{username}> Hello everyone!").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn send_message(&self, message: &str) -> Result<(), ClientError> {
+        let msg = message.replace("{username}", &self.username);
+        self.send_custom_message(&msg)
+    }
+
+    /// Sends a raw message to the server without any modifications.
+    pub fn send_custom_message(&self, message: &str) -> Result<(), ClientError> {
+        let mut ws = self.get_ws()?;
+        if self.connection == Connection::RACv2 && self.password.is_some() {
+            let payload = format!(
+                "\x02{}\n{}\n{}",
+                self.username,
+                self.password.as_deref().unwrap(),
+                message
+            );
+            ws.send(Message::Binary(payload.into()))
+                .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+            if let Ok(Message::Binary(buf)) = ws.read() {
+                return match buf.first() {
+                    Some(0x01) => Err(ClientError::UserDoesNotExist),
+                    Some(0x02) => Err(ClientError::IncorrectPassword),
+                    Some(code) => Err(ClientError::UnexpectedResponse(format!("0x{code:02x}"))),
+                    None => Ok(()),
+                };
+            }
+            ws.close(None).ok();
+            return Ok(());
+        }
+        ws.send(Message::Binary(format!("\x01{}", message).into()))
+            .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+        ws.close(None).ok();
+        Ok(())
+    }
+
+    /// Resets the client's state to its default values.
+    ///
+    /// This clears the address, username, password, and message size, and sets the
+    /// connection type to `Connection::RAC` and `use_tls` to `false`.
+    pub fn reset(&mut self) {
+        self.current_messages_size = 0;
+        self.address.clear();
+        self.username.clear();
+        self.password = None;
+        self.connection = Connection::RAC;
+        self.use_tls = false;
+    }
+
+    /// Returns the current size of messages known to the client.
+    ///
+    /// This value is updated after calls to `fetch_all_messages` or `fetch_new_messages`.
+    pub fn current_messages_size(&self) -> usize {
+        self.current_messages_size
+    }
+    /// Returns a reference to the server address.
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+    /// Returns a reference to the client's username.
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+}

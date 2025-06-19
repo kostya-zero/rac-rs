@@ -25,6 +25,7 @@
 //!         "127.0.0.1:42666".to_string(),
 //!         credentials,
 //!         Connection::RACv2,
+//!         false
 //!     );
 //!
 //!     // Test the connection
@@ -55,3 +56,11 @@ pub mod async_client;
 
 /// Contains shared type and utilities that's used across the library.
 pub mod shared;
+
+/// Contains the implementation of the WRAC protocol, which is a WebSocket-based version of the RAC protocol.
+#[cfg(feature = "wrac")]
+pub mod wrac;
+
+/// Contains the async implementation of the WRAC protocol.
+#[cfg(feature = "async_wrac")]
+pub mod async_wrac;
