@@ -65,6 +65,20 @@ impl Client {
         self.password = credentials.password;
     }
 
+    /// Updates the client's address to the server.
+    ///
+    /// This method allows you to change the address of the RAC server.
+    pub fn update_address(&mut self, address: String) {
+        self.address = address;
+    }
+
+    /// Updates the client's connection type.
+    ///
+    /// This method allows you to change the type of connection to the RAC server.
+    pub fn update_connection(&mut self, connection: Connection) {
+        self.connection = connection;
+    }
+
     /// Attempts to establish a TCP connection to the RAC server.
     async fn get_stream(&self) -> Result<TcpStream, ClientError> {
         match TcpStream::connect(&self.address).await {
