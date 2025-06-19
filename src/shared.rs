@@ -39,6 +39,10 @@ pub enum ClientError {
     /// For example, trying to register a user with a `RAC` connection.
     #[error("Incorrect connection type")]
     IncorrectConnectionType,
+
+    /// An error that occurs while initializing a TLS connection.
+    #[error("Failed to initialize TLS connection: {0}")]
+    TlsInitializationError(String),
 }
 
 /// Represents the type of connection to a RAC server.

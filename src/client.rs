@@ -1,7 +1,13 @@
 ﻿use crate::shared::{ClientError, Connection, Credentials};
+use native_tls::TlsConnector;
 use std::borrow::Cow;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+
+trait Io: Read + Write {}
+impl<T: Read + Write + ?Sized> Io for T {}
+
+type DynStream = Box<dyn Io + Send>;
 
 /// A client for interacting with a RAC server.
 ///
@@ -23,6 +29,7 @@ use std::net::TcpStream;
 ///     "127.0.0.1:1234".to_string(),
 ///     credentials,
 ///     Connection::RACv2,
+///     false
 /// );
 /// ```
 #[derive(Debug, Clone)]
@@ -37,6 +44,8 @@ pub struct Client {
     password: Option<String>,
     /// The type of connection to the RAC server.
     connection: Connection,
+    /// Whether to use TLS encryption.
+    use_tls: bool,
 }
 
 impl Client {
@@ -47,13 +56,20 @@ impl Client {
     /// * `address` - The address of the RAC server (e.g., "127.0.0.1:42666").
     /// * `credentials` - The username and optional password.
     /// * `connection` - The type of connection (`RAC` or `RACv2`).
-    pub fn new(address: String, credentials: Credentials, connection: Connection) -> Self {
+    /// * `use_tls` - Whether to use TLS encryption for the connection.
+    pub fn new(
+        address: String,
+        credentials: Credentials,
+        connection: Connection,
+        use_tls: bool,
+    ) -> Self {
         Self {
             current_messages_size: 0,
             address,
             username: credentials.username,
             password: credentials.password,
             connection,
+            use_tls,
         }
     }
 
@@ -80,11 +96,22 @@ impl Client {
     }
 
     /// Attempts to establish a TCP connection to the RAC server.
-    fn get_stream(&self) -> Result<TcpStream, ClientError> {
-        match TcpStream::connect(&self.address) {
-            Ok(stream) => Ok(stream),
-            Err(e) => Err(ClientError::ConnectionError(e)),
+    fn get_stream(&self) -> Result<DynStream, ClientError> {
+        let stream = TcpStream::connect(&self.address).map_err(ClientError::ConnectionError)?;
+
+        if !self.use_tls {
+            return Ok(Box::new(stream));
         }
+
+        let domain = self.address.split(':').next().unwrap_or("localhost");
+
+        let connector =
+            TlsConnector::new().map_err(|e| ClientError::TlsInitializationError(e.to_string()))?;
+        let tls_stream = connector
+            .connect(domain, stream)
+            .map_err(|e| ClientError::TlsInitializationError(e.to_string()))?;
+
+        Ok(Box::new(tls_stream))
     }
 
     /// Tests the connection to the RAC server.
@@ -266,7 +293,7 @@ impl Client {
     /// ```no_run
     /// # use rac_rs::client::Client;
     /// # use rac_rs::shared::{ClientError, Connection};
-    /// # let mut client = Client::new("".to_string(), Default::default(), Connection::RAC);
+    /// # let mut client = Client::new("".to_string(), Default::default(), Connection::RAC, false);
     /// client.send_message("<{username}> Hello everyone!")?;
     /// # Ok::<(), ClientError>(())
     /// ```
