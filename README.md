@@ -1,4 +1,4 @@
-﻿# rac-rs
+﻿# `rac-rs`
 
 [//]: # ( FIXME: Uncomment this when it will be published on crates.io)
 [//]: # ([![crates.io]&#40;https://img.shields.io/crates/v/rac_rs.svg&#41;]&#40;https://crates.io/crates/rac_rs&#41;)
@@ -165,6 +165,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## Projects using `rac_rs`:
+- [Tower](https://github.com/kostya-zero/tower): A modern desktop client for RAC protocol built with Tauri.
 
 ## License
 
