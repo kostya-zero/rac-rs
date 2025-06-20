@@ -81,6 +81,13 @@ impl Client {
         self.password = credentials.password;
     }
 
+    /// Updates the client's TLS usage.
+    ///
+    /// This method allows you to enable or disable TLS encryption for the connection.
+    pub fn update_tls(&mut self, use_tls: bool) {
+        self.use_tls = use_tls;
+    }
+
     /// Updates the client's address to the server.
     ///
     /// This method allows you to change the address of the RAC server.
@@ -390,6 +397,11 @@ impl Client {
     /// This value is updated after calls to `fetch_all_messages` or `fetch_new_messages`.
     pub fn current_messages_size(&self) -> usize {
         self.current_messages_size
+    }
+
+    /// Returns the current state of TLS usage.
+    pub fn tls(&self) -> bool {
+        self.use_tls
     }
 
     /// Returns a reference to the server address.

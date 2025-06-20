@@ -24,7 +24,7 @@ type WsStream = WebSocket<MaybeTlsStream<TcpStream>>;
 /// };
 ///
 /// let mut client = WClient::new(
-///     "127.0.0.1:52666".to_string(),
+///     "127.0.0.1:52666",
 ///     credentials,
 ///     Connection::RACv2,
 ///     false,
@@ -62,19 +62,48 @@ impl WClient {
     /// * `connection` - The type of connection (`RAC` or `RACv2`).
     /// * `use_tls` forces `wss://` when the input lacks a scheme.
     pub fn new(
-        address: String,
+        address: &str,
         credentials: Credentials,
         connection: Connection,
         use_tls: bool,
     ) -> Self {
         Self {
             current_messages_size: 0,
-            address,
+            address: address.to_string(),
             use_tls,
             username: credentials.username,
             password: credentials.password,
             connection,
         }
+    }
+
+    /// Updates the client's credentials.
+    ///
+    /// This method allows you to change the username and password for the client.
+    pub fn update_credentials(&mut self, credentials: Credentials) {
+        self.username = credentials.username;
+        self.password = credentials.password;
+    }
+
+    /// Updates the client's TLS usage.
+    ///
+    /// This method allows you to enable or disable TLS encryption for the connection.
+    pub fn update_tls(&mut self, use_tls: bool) {
+        self.use_tls = use_tls;
+    }
+
+    /// Updates the client's address to the server.
+    ///
+    /// This method allows you to change the address of the RAC server.
+    pub fn update_address(&mut self, address: String) {
+        self.address = address;
+    }
+
+    /// Updates the client's connection type.
+    ///
+    /// This method allows you to change the type of connection to the RAC server.
+    pub fn update_connection(&mut self, connection: Connection) {
+        self.connection = connection;
     }
 
     /// Turn the user‑supplied `address` into a valid WebSocket URL.
@@ -248,7 +277,7 @@ impl WClient {
     /// # use rac_rs::wrac::WClient;
     /// # use rac_rs::shared::{ClientError, Connection, Credentials};
     /// # async fn run() -> Result<(), ClientError> {
-    /// # let client = WClient::new("".to_string(), Default::default(), Connection::RAC, false);
+    /// # let client = WClient::new("", Default::default(), Connection::RAC, false);
     /// client.send_message("<{username}> Hello everyone!").await?;
     /// # Ok(())
     /// # }
@@ -306,10 +335,17 @@ impl WClient {
     pub fn current_messages_size(&self) -> usize {
         self.current_messages_size
     }
+
+    /// Returns the current state of TLS usage.
+    pub fn tls(&self) -> bool {
+        self.use_tls
+    }
+
     /// Returns a reference to the server address.
     pub fn address(&self) -> &str {
         &self.address
     }
+
     /// Returns a reference to the client's username.
     pub fn username(&self) -> &str {
         &self.username

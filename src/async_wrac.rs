@@ -80,6 +80,35 @@ impl WClient {
         }
     }
 
+    /// Updates the client's credentials.
+    ///
+    /// This method allows you to change the username and password for the client.
+    pub fn update_credentials(&mut self, credentials: Credentials) {
+        self.username = credentials.username;
+        self.password = credentials.password;
+    }
+
+    /// Updates the client's TLS usage.
+    ///
+    /// This method allows you to enable or disable TLS encryption for the connection.
+    pub fn update_tls(&mut self, use_tls: bool) {
+        self.use_tls = use_tls;
+    }
+
+    /// Updates the client's address to the server.
+    ///
+    /// This method allows you to change the address of the RAC server.
+    pub fn update_address(&mut self, address: String) {
+        self.address = address;
+    }
+
+    /// Updates the client's connection type.
+    ///
+    /// This method allows you to change the type of connection to the RAC server.
+    pub fn update_connection(&mut self, connection: Connection) {
+        self.connection = connection;
+    }
+
     /// Turn the user‑supplied `address` into a valid WebSocket URL.
     fn build_url(&self) -> Result<String, ClientError> {
         if self.address.starts_with("ws://") || self.address.starts_with("wss://") {
@@ -335,10 +364,17 @@ impl WClient {
     pub fn current_messages_size(&self) -> usize {
         self.current_messages_size
     }
+
+    /// Returns the current state of TLS usage.
+    pub fn tls(&self) -> bool {
+        self.use_tls
+    }
+
     /// Returns a reference to the server address.
     pub fn address(&self) -> &str {
         &self.address
     }
+
     /// Returns a reference to the client's username.
     pub fn username(&self) -> &str {
         &self.username
