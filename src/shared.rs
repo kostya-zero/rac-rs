@@ -1,4 +1,4 @@
-﻿use thiserror::Error;
+use thiserror::Error;
 
 /// Represents errors that can occur while interacting with the RAC server.
 #[derive(Error, Debug)]
@@ -16,7 +16,7 @@ pub enum ClientError {
     StreamReadError(std::io::Error),
 
     /// Failed to send a message to the server via WebSocket.
-    #[error("Failed to send message via WebSocket: {0}")]
+    #[error("Failed to read message via WebSocket: {0}")]
     WsReadError(String),
 
     /// Failed to send a message to the server via WebSocket.
