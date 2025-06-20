@@ -15,7 +15,7 @@ pub enum ClientError {
     #[error("Failed to read data from the stream: {0}")]
     StreamReadError(std::io::Error),
 
-    /// Failed to send a message to the server via WebSocket.
+    /// Failed to read a message to the server via WebSocket.
     #[error("Failed to read message via WebSocket: {0}")]
     WsReadError(String),
 
