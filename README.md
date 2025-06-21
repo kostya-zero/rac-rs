@@ -1,9 +1,7 @@
 ﻿# `rac-rs`
 
-[//]: # ( FIXME: Uncomment this when it will be published on crates.io)
-[//]: # ([![crates.io]&#40;https://img.shields.io/crates/v/rac_rs.svg&#41;]&#40;https://crates.io/crates/rac_rs&#41;)
-[//]: # ([![docs.rs]&#40;https://docs.rs/rac_rs/badge.svg&#41;]&#40;https://docs.rs/rac_rs&#41;)
-
+[![crates.io](https://img.shields.io/crates/v/rac_rs.svg)](https://crates.io/crates/rac_rs)
+[![docs.rs](https://docs.rs/rac_rs/badge.svg)](https://docs.rs/rac_rs)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
 
 
@@ -21,10 +19,6 @@ A Rust client library for RAC (Real Address Chat) protocol.
 - Fetch all or only new messages.
 - Send messages with `{username}` placeholder replacement.
 - Comprehensive error handling via `ClientError`.
-
-> [!NOTE]
-> This library is still in development and may not cover all edge cases or features of the RAC protocol. Contributions
-> are welcome!
 
 ## Installation
 
