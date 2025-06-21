@@ -22,10 +22,6 @@ A Rust client library for RAC (Real Address Chat) protocol.
 - Send messages with `{username}` placeholder replacement.
 - Comprehensive error handling via `ClientError`.
 
-> [!WARNING]
-> The WRAC protocol implementation is unstable and may not work correctly. 
-> Proceed with caution if you plan to use it.
-
 > [!NOTE]
 > This library is still in development and may not cover all edge cases or features of the RAC protocol. Contributions
 > are welcome!
