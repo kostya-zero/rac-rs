@@ -53,10 +53,9 @@ Here is a basic example of how to use the synchronous `Client`.
 
 ```rust
 use rac_rs::client::Client;
-use rac_rs::shared::{ClientError, Connection, Credentials};
+use rac_rs::shared::{ClientError,Credentials};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // For RACv2 connections with authentication
     let credentials = Credentials {
         username: "test_user".to_string(),
         password: Some("password123".to_string()),
@@ -65,15 +64,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::new(
         "127.0.0.1:42666".to_string(), // Your RAC server address
         credentials,
-        Connection::RACv2,
+        false
     );
-
-    // For legacy RAC connections (no authentication)
-    // let mut client = Client::new(
-    //     "127.0.0.1:42666".to_string(),
-    //     Credentials { username: "guest".to_string(), password: None },
-    //     Connection::RAC,
-    // );
 
     // Test the connection
     client.test_connection()?;
