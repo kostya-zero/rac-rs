@@ -354,7 +354,7 @@ impl Client {
                 )
                 .await
                 .map_err(ClientError::StreamWriteError)?;
-            let mut buf = [0u8; 2];
+            let mut buf = [0u8; 16];
             let n = stream
                 .read(&mut buf)
                 .await

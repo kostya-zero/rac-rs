@@ -52,7 +52,6 @@ pub struct WClient {
     /// The type of connection to the RAC server.
     connection: Connection,
     // Hold the WebSocket Connection
-    
 }
 
 impl WClient {
@@ -199,28 +198,9 @@ impl WClient {
     /// This method retrieves all messages stored on the server and updates the
     /// client's internal message size tracker.
     pub async fn fetch_all_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
+        // Fetching new size explicitly
+        self.fetch_messages_size().await?;
         let mut ws = self.get_ws().await?;
-        ws.send(Message::Binary(vec![0x00].into()))
-            .await
-            .map_err(|e| ClientError::WsSendError(e.to_string()))?;
-        let size_msg = ws
-            .next()
-            .await
-            .ok_or_else(|| ClientError::UnexpectedResponse("EOF".into()))?
-            .map_err(|e| ClientError::WsReadError(e.to_string()))?;
-        let size: usize = match &size_msg {
-            Message::Text(t) => t
-                .trim()
-                .to_string()
-                .parse()
-                .map_err(|e| ClientError::ParseError(format!("Failed to parse size: {}", e)))?,
-            Message::Binary(b) => String::from_utf8_lossy(b)
-                .trim()
-                .parse()
-                .map_err(|e| ClientError::ParseError(format!("Failed to parse size: {}", e)))?,
-            _ => return Err(ClientError::ParseError("Unexpected WS message".into())),
-        };
-        self.current_messages_size = size;
         ws.send(Message::Binary(vec![0x01].into()))
             .await
             .map_err(|e| ClientError::WsSendError(e.to_string()))?;
@@ -247,30 +227,17 @@ impl WClient {
     /// stored size and retrieves only the difference. The client's internal message
     /// size tracker is updated upon successful fetch.
     pub async fn fetch_new_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
-        use tokio_tungstenite::tungstenite::protocol::Message;
+        let old_size = self.current_messages_size;
+        // Fetching new size via fetch_current_size because it's WRAC
+        self.fetch_messages_size().await?;
+        let new_size = self.current_messages_size;
+        if old_size >= new_size {
+            return Ok(Vec::new());
+        }
+        // Because the first one will be closed after our request.
         let mut ws = self.get_ws().await?;
-        ws.send(Message::Binary(vec![0x00].into()))
-            .await
-            .map_err(|e| ClientError::WsSendError(e.to_string()))?;
-        let size_msg = ws
-            .next()
-            .await
-            .ok_or_else(|| ClientError::UnexpectedResponse("EOF".into()))?
-            .map_err(|e| ClientError::WsReadError(e.to_string()))?;
-        let size: usize = match &size_msg {
-            Message::Text(t) => t
-                .trim()
-                .to_string()
-                .parse()
-                .map_err(|e| ClientError::ParseError(format!("Failed to parse size: {}", e)))?,
-            Message::Binary(b) => String::from_utf8_lossy(b)
-                .trim()
-                .parse()
-                .map_err(|e| ClientError::ParseError(format!("Failed to parse size: {}", e)))?,
-            _ => return Err(ClientError::ParseError("Unexpected WS message".into())),
-        };
         ws.send(Message::Binary(
-            format!("\x02{}", self.current_messages_size).into(),
+            format!("\x00\x02{}", self.current_messages_size).into(),
         ))
         .await
         .map_err(|e| ClientError::WsSendError(e.to_string()))?;
@@ -284,7 +251,6 @@ impl WClient {
             Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
             _ => String::new(),
         };
-        self.current_messages_size = size;
         Ok(payload
             .lines()
             .filter(|l| !l.is_empty())
