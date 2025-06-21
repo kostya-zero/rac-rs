@@ -21,6 +21,6 @@ futures-util = { version = "0.3.31", optional = true }
 [features]
 default = ["client", "async_client", "wrac", "async_wrac"]
 client = ["native-tls"]
-async_client = ["tokio", "tokio-native-tls"]
+async_client = ["tokio", "tokio-native-tls", "native-tls"]
 wrac = ["tungstenite"]
 async_wrac = ["tokio-tungstenite", "tungstenite", "tokio", "futures-util"]
