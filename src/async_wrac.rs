@@ -27,7 +27,7 @@ type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 /// };
 ///
 /// let mut client = WClient::new(
-///     "127.0.0.1:52666".to_string(),
+///     "127.0.0.1:52666",
 ///     credentials,
 ///     false,
 /// );
@@ -64,13 +64,13 @@ impl WClient {
     /// * `credentials` - The username and optional password.
     /// * `use_tls` forces `wss://` when the input lacks a scheme.
     pub fn new(
-        address: String,
+        address: &str,
         credentials: Credentials,
         use_tls: bool,
     ) -> Self {
         Self {
             current_messages_size: 0,
-            address,
+            address: address.to_string(),
             use_tls,
             username: credentials.username,
             password: credentials.password,
@@ -264,7 +264,7 @@ impl WClient {
     /// # use rac_rs::async_wrac::WClient;
     /// # use rac_rs::shared::{ClientError, Credentials};
     /// # async fn run() -> Result<(), ClientError> {
-    /// # let mut client = WClient::new("".to_string(), Default::default(), false);
+    /// # let mut client = WClient::new("", Default::default(), false);
     /// client.send_message("<{username}> Hello everyone!").await?;
     /// # Ok(())
     /// # }

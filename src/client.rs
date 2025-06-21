@@ -26,7 +26,7 @@ type DynStream = Box<dyn Io + Send>;
 /// };
 ///
 /// let mut client = Client::new(
-///     "127.0.0.1:1234".to_string(),
+///     "127.0.0.1:1234",
 ///     credentials,
 ///     false
 /// );
@@ -54,10 +54,10 @@ impl Client {
     /// * `credentials` - The username and optional password.
     /// * `connection` - The type of connection (`RAC` or `RACv2`).
     /// * `use_tls` - Whether to use TLS encryption for the connection.
-    pub fn new(address: String, credentials: Credentials, use_tls: bool) -> Self {
+    pub fn new(address: &str, credentials: Credentials, use_tls: bool) -> Self {
         Self {
             current_messages_size: 0,
-            address,
+            address: address.to_string(),
             username: credentials.username,
             password: credentials.password,
             use_tls,
@@ -283,7 +283,7 @@ impl Client {
     /// ```no_run
     /// # use rac_rs::client::Client;
     /// # use rac_rs::shared::ClientError;
-    /// # let mut client = Client::new("".to_string(), Default::default(), false);
+    /// # let mut client = Client::new("", Default::default(), false);
     /// client.send_message("<{username}> Hello everyone!")?;
     /// # Ok::<(), ClientError>(())
     /// ```
