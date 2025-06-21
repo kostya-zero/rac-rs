@@ -153,7 +153,6 @@ impl WClient {
                     None => Ok(()),
                 };
             }
-            ws.close(None).ok();
             return Ok(());
         }
         Err(ClientError::IncorrectConnectionType)
@@ -178,7 +177,6 @@ impl WClient {
             .trim()
             .parse::<usize>()
             .map_err(|_| ClientError::ParseError("Failed to parse messages size".into()))?;
-        ws.close(None).ok();
         Ok(())
     }
 
@@ -215,7 +213,6 @@ impl WClient {
             Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
             _ => String::new(),
         };
-        ws.close(None).ok();
         Ok(payload
             .lines()
             .filter(|l| !l.is_empty())
@@ -259,7 +256,6 @@ impl WClient {
             _ => String::new(),
         };
         self.current_messages_size = size;
-        ws.close(None).ok();
         Ok(payload
             .lines()
             .filter(|l| !l.is_empty())
@@ -307,12 +303,10 @@ impl WClient {
                     None => Ok(()),
                 };
             }
-            ws.close(None).ok();
             return Ok(());
         }
         ws.send(Message::Binary(format!("\x01{}", message).into()))
             .map_err(|e| ClientError::WsSendError(e.to_string()))?;
-        ws.close(None).ok();
         Ok(())
     }
 

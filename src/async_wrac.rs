@@ -51,6 +51,8 @@ pub struct WClient {
     password: Option<String>,
     /// The type of connection to the RAC server.
     connection: Connection,
+    // Hold the WebSocket Connection
+    
 }
 
 impl WClient {
@@ -163,7 +165,6 @@ impl WClient {
                     None => Ok(()),
                 };
             }
-            ws.close(None).await.ok();
             return Ok(());
         }
         Err(ClientError::IncorrectConnectionType)
@@ -187,7 +188,6 @@ impl WClient {
                 .trim()
                 .parse::<usize>()
                 .map_err(|_| ClientError::ParseError("Failed to parse messages size".into()))?;
-            ws.close(None).await.ok();
             Ok(())
         } else {
             Err(ClientError::UnexpectedResponse("EOF".into()))
@@ -234,7 +234,6 @@ impl WClient {
             Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
             _ => String::new(),
         };
-        ws.close(None).await.ok();
         Ok(payload
             .lines()
             .filter(|l| !l.is_empty())
@@ -286,7 +285,6 @@ impl WClient {
             _ => String::new(),
         };
         self.current_messages_size = size;
-        ws.close(None).await.ok();
         Ok(payload
             .lines()
             .filter(|l| !l.is_empty())
@@ -341,7 +339,6 @@ impl WClient {
         ws.send(Message::Binary(format!("\x01{}", message).into()))
             .await
             .map_err(|e| ClientError::WsSendError(e.to_string()))?;
-        ws.close(None).await.ok();
         Ok(())
     }
 
