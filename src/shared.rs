@@ -51,7 +51,7 @@ pub enum ClientError {
     /// An error that occurs while initializing a TLS connection.
     #[error("Failed to initialize TLS connection: {0}")]
     TlsInitializationError(String),
-    
+
     /// An error that occurs when connection to WRAC server is not established first.
     #[error("Not connected to WRAC. Establish connection first.")]
     NoConnectionWRAC,

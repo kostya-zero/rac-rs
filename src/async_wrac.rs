@@ -9,9 +9,9 @@ use tungstenite::client::IntoClientRequest;
 /// WebSocket stream behind the scenes.
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-/// A WebSocket client for interacting with a RAC server.
+/// A WebSocket client for interacting with a WRAC server.
 ///
-/// The `WClient` provides methods to connect to a RAC server over WebSockets.
+/// The `WClient` provides methods to connect to a WRAC server over WebSockets.
 ///
 /// # Example
 ///

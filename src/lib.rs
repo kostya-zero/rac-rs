@@ -1,19 +1,26 @@
 //! `rac_rs` is a Rust implementation of a client for RAC (Real Address Chat) protocol.
 //!
-//! This library provides a `Client` to interact with RAC servers, allowing you to:
+//! This crate provides a `Client` to interact with RAC servers, allowing you to:
 //! - Connect to a server.
 //! - Send and receive messages.
 //! - Register new users.
 //!
-//! It supports both `RAC` (v1.99.x) and `RACv2` (v2.x with authentication) protocols.
+//! It supports both RAC and WRAC protocols.
 //!
-//! Also, library provides an async client implementation when the `async_client` feature is enabled.
+//! This crate is split into separate features which provide different functionality:
+//!
+//! - `client` - Synchronous client for RAC protocol.
+//! - `async_client` - Asynchronous client for RAC protocol.
+//! - `wrac` - Synchronous client for WRAC protocol.
+//! - `async_wrac` - Asynchronous client for WRAC protocol.
+//!
+//! By default, all of these features are enabled.
 //!
 //! # Example
 //!
 //! ```no_run
 //! use rac_rs::client::Client;
-//! use rac_rs::shared::{Connection, Credentials};
+//! use rac_rs::shared::Credentials;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let credentials = Credentials {
@@ -24,7 +31,6 @@
 //!     let mut client = Client::new(
 //!         "127.0.0.1:42666".to_string(),
 //!         credentials,
-//!         Connection::RACv2,
 //!         false
 //!     );
 //!

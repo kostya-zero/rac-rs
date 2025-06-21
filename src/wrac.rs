@@ -6,7 +6,7 @@ use tungstenite::{client::IntoClientRequest, connect, stream::MaybeTlsStream, Me
 /// Concrete WebSocket stream type we deal with.
 type WsStream = WebSocket<MaybeTlsStream<TcpStream>>;
 
-/// A WebSocket client for interacting with a RAC server.
+/// A WebSocket client for interacting with a WRAC server.
 ///
 /// The `WClient` provides methods to connect to a WRAC server over WebSockets.
 ///
@@ -59,11 +59,7 @@ impl WClient {
     ///   * or just `host:port` (path defaults to `/`).
     /// * `credentials` - The username and optional password.
     /// * `use_tls` forces `wss://` when the input lacks a scheme.
-    pub fn new(
-        address: &str,
-        credentials: Credentials,
-        use_tls: bool,
-    ) -> Self {
+    pub fn new(address: &str, credentials: Credentials, use_tls: bool) -> Self {
         Self {
             current_messages_size: 0,
             address: address.to_string(),

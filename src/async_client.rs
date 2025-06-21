@@ -54,11 +54,7 @@ impl Client {
     /// * `credentials` - The username and optional password.
     /// * `connection` - The type of connection (`RAC` or `RACv2`).
     /// * `use_tls` - Whether to use TLS encryption for the connection.
-    pub fn new(
-        address: String,
-        credentials: Credentials,
-        use_tls: bool,
-    ) -> Self {
+    pub fn new(address: String, credentials: Credentials, use_tls: bool) -> Self {
         Self {
             current_messages_size: 0,
             address,

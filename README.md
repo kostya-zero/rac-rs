@@ -22,7 +22,7 @@ A Rust client library for RAC (Real Address Chat) protocol.
 - Send messages with `{username}` placeholder replacement.
 - Comprehensive error handling via `ClientError`.
 
->[!WARNING]
+> [!WARNING]
 > The WRAC protocol implementation is unstable and may not work correctly. 
 > Proceed with caution if you plan to use it.
 
@@ -45,6 +45,17 @@ Or use bleeding-edge version from GitHub:
 [dependencies]
 rac_rs = { git = "https://github.com/kostya-zero/rac-rs.git" }
 ```
+
+## Configuring
+
+The crate APIs are split into separate features:
+
+- `client` - Synchronous client for RAC protocol.
+- `async_client` - Asynchronous client for RAC protocol.
+- `wrac` - Synchronous client for WRAC protocol.
+- `async_wrac` - Asynchronous client for WRAC protocol.
+
+All of these features are enabled by default.
 
 ## Usage
 
@@ -113,71 +124,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## API Overview
-
-- **`client::Client`**: The main entry point for interacting with a RAC server using a synchronous API.
-- **`async_client::Client`**: The async version of the `Client`. Requires the `async_client` feature to be enabled.
-- **`shared::Connection`**: An enum to specify the protocol version:
-    - `Connection::RAC`: For legacy v1.99.x servers without authentication.
-    - `Connection::RACv2`: For v2.x servers with authentication support.
-- **`shared::Credentials`**: A struct to hold the `username` and optional `password` for connecting.
-- **`shared::ClientError`**: An enum representing all possible errors that can occur, such as connection issues, parsing
-  errors, or authentication failures.
-
-## Async Support
-
-This library provides an asynchronous client under the `rac_rs::async_client` module. The API is very similar to the
-synchronous client but uses `async/await`. You will need to enable the `async_client` feature for `rac_rs in your `
-Cargo.toml`.
-
-### Async Example
-
-First, add `async_client` feature to the features field in your `Cargo.toml`:
-
-```toml
-[dependencies]
-rac_rs = { version = "0.1.0", features = ["async_client"] }
-```
-
-Then, you can use the async client:
-
-```rust
-use rac_rs::async_client::Client; // Note: from async_client module
-use rac_rs::shared::{Connection, Credentials};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let credentials = Credentials {
-        username: "async_user".to_string(),
-        password: Some("password123".to_string()),
-    };
-
-    let mut client = Client::new(
-        "127.0.0.1:42666".to_string(),
-        credentials,
-        Connection::RACv2,
-    );
-
-    // All client methods are async
-    client.test_connection().await?;
-    println!("Async connection successful.");
-
-    client.send_message("<{username}> Hello from asynchronous rac_rs!").await?;
-    println!("Async message sent.");
-
-    let messages = client.fetch_all_messages().await?;
-    println!("\n--- Fetched Messages (Async) ---");
-    for msg in messages {
-        println!("{}", msg);
-    }
-
-    Ok(())
-}
-```
-
 ## Projects using `rac_rs`:
 - [Tower](https://github.com/kostya-zero/tower): A modern desktop client for RAC protocol built with Tauri.
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
