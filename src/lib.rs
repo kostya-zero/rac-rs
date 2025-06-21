@@ -48,6 +48,7 @@
 //! ```
 
 /// Contains the client implementation for interacting with RAC servers.
+#[cfg(feature = "client")]
 pub mod client;
 
 /// Contains the async client implementation for interacting with RAC servers.
