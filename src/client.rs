@@ -1,4 +1,4 @@
-﻿use crate::shared::{ClientError, Connection, Credentials};
+﻿use crate::shared::{ClientError, Credentials};
 use native_tls::TlsConnector;
 use std::borrow::Cow;
 use std::io::{Read, Write};
@@ -18,7 +18,7 @@ type DynStream = Box<dyn Io + Send>;
 ///
 /// ```no_run
 /// use rac_rs::client::Client;
-/// use rac_rs::shared::{Connection, Credentials};
+/// use rac_rs::shared::Credentials;
 ///
 /// let credentials = Credentials {
 ///     username: "test_user".to_string(),
@@ -28,7 +28,6 @@ type DynStream = Box<dyn Io + Send>;
 /// let mut client = Client::new(
 ///     "127.0.0.1:1234".to_string(),
 ///     credentials,
-///     Connection::RACv2,
 ///     false
 /// );
 /// ```
@@ -42,8 +41,6 @@ pub struct Client {
     username: String,
     /// The password for authentication, if required.
     password: Option<String>,
-    /// The type of connection to the RAC server.
-    connection: Connection,
     /// Whether to use TLS encryption.
     use_tls: bool,
 }
@@ -60,7 +57,6 @@ impl Client {
     pub fn new(
         address: String,
         credentials: Credentials,
-        connection: Connection,
         use_tls: bool,
     ) -> Self {
         Self {
@@ -68,7 +64,6 @@ impl Client {
             address,
             username: credentials.username,
             password: credentials.password,
-            connection,
             use_tls,
         }
     }
@@ -93,13 +88,6 @@ impl Client {
     /// This method allows you to change the address of the RAC server.
     pub fn update_address(&mut self, address: String) {
         self.address = address;
-    }
-
-    /// Updates the client's connection type.
-    ///
-    /// This method allows you to change the type of connection to the RAC server.
-    pub fn update_connection(&mut self, connection: Connection) {
-        self.connection = connection;
     }
 
     /// Attempts to establish a TCP connection to the RAC server.
@@ -131,18 +119,17 @@ impl Client {
 
     /// Registers a new user on the RAC server.
     ///
-    /// This operation is only available for `RACv2` connections and requires a password.
-    ///
     /// # Errors
     ///
-    /// Returns `ClientError::IncorrectConnectionType` if not a `RACv2` connection.
+    /// Returns `ClientError::NoPassword` if no password specified for the client.
     /// Returns `ClientError::UsernameAlreadyTaken` if the username is already in use.
+    /// Returns `ClientError::UnexpectedResponse` if got unexpected response from server.
     pub fn register_user(&mut self) -> Result<(), ClientError> {
         // Getting the TCP stream to the RAC server.
         let mut stream = self.get_stream()?;
 
         // Sending the username and password to the RAC server.
-        if self.connection == Connection::RACv2 && self.password.is_some() {
+        if self.password.is_some() {
             stream
                 .write_all(
                     format!(
@@ -167,7 +154,7 @@ impl Client {
                 )),
             }
         } else {
-            Err(ClientError::IncorrectConnectionType)
+            Err(ClientError::NoPassword)
         }
     }
 
@@ -299,8 +286,8 @@ impl Client {
     ///
     /// ```no_run
     /// # use rac_rs::client::Client;
-    /// # use rac_rs::shared::{ClientError, Connection};
-    /// # let mut client = Client::new("".to_string(), Default::default(), Connection::RAC, false);
+    /// # use rac_rs::shared::ClientError;
+    /// # let mut client = Client::new("".to_string(), Default::default(), false);
     /// client.send_message("<{username}> Hello everyone!")?;
     /// # Ok::<(), ClientError>(())
     /// ```
@@ -316,8 +303,7 @@ impl Client {
 
         // Sending the message to the RAC server.
 
-        if self.connection == Connection::RACv2 && self.password.is_some() {
-            // If the connection is RACv2, we need to send the username and password.
+        if self.password.is_some() {
             stream
                 .write_all(
                     format!(
@@ -355,14 +341,12 @@ impl Client {
 
     /// Resets the client's state to its default values.
     ///
-    /// This clears the address, username, password, and message size, and sets the
-    /// connection type to `Connection::RAC`.
+    /// This clears the address, username, password, and message size.
     pub fn reset(&mut self) {
         self.current_messages_size = 0;
         self.address.clear();
         self.username.clear();
         self.password = None;
-        self.connection = Connection::RAC; // Default to RAC connection
     }
 
     /// Returns the current size of messages known to the client.

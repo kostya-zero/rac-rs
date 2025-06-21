@@ -45,23 +45,16 @@ pub enum ClientError {
 
     /// An operation was attempted that is not supported by the current connection type.
     /// For example, trying to register a user with a `RAC` connection.
-    #[error("Incorrect connection type")]
-    IncorrectConnectionType,
+    #[error("No password specified.")]
+    NoPassword,
 
     /// An error that occurs while initializing a TLS connection.
     #[error("Failed to initialize TLS connection: {0}")]
     TlsInitializationError(String),
-}
-
-/// Represents the type of connection to a RAC server.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Connection {
-    /// Represents a connection to a RAC server using the legacy v1.99.x protocol.
-    /// This protocol does not support authentication.
-    RAC,
-    /// Represents a connection to a RAC server using the v2.x protocol.
-    /// This protocol adds support for user registration and authentication.
-    RACv2,
+    
+    /// An error that occurs when connection to WRAC server is not established first.
+    #[error("Not connected to WRAC. Establish connection first.")]
+    NoConnectionWRAC,
 }
 
 /// Represents the credentials required to connect to a RAC server.

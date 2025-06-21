@@ -1,4 +1,4 @@
-﻿use crate::shared::{ClientError, Connection, Credentials};
+﻿use crate::shared::{ClientError, Credentials};
 use futures_util::{SinkExt, StreamExt};
 use std::borrow::Cow;
 use tokio::net::TcpStream;
@@ -11,14 +11,14 @@ type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// A WebSocket client for interacting with a RAC server.
 ///
-/// The `WClient` provides methods to connect to a RAC server over WebSockets,
-/// send and receive messages, and manage user registration for `RACv2` connections.
+/// The `WClient` provides methods to connect to a RAC server over WebSockets.
 ///
 /// # Example
 ///
 /// ```no_run
 /// use rac_rs::async_wrac::WClient;
-/// use rac_rs::shared::{Connection, Credentials};
+/// use rac_rs::shared::Credentials;
+///
 ///
 /// # async fn run() -> Result<(), rac_rs::shared::ClientError> {
 /// let credentials = Credentials {
@@ -29,15 +29,15 @@ type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 /// let mut client = WClient::new(
 ///     "127.0.0.1:52666".to_string(),
 ///     credentials,
-///     Connection::RACv2,
 ///     false,
 /// );
 ///
-/// client.test_connection().await?;
+/// // Initialize WebSocket connection
+/// client.prepare().await?;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WClient {
     /// The current size of messages in the client.
     current_messages_size: usize,
@@ -49,9 +49,8 @@ pub struct WClient {
     username: String,
     /// The password for authentication, if required.
     password: Option<String>,
-    /// The type of connection to the RAC server.
-    connection: Connection,
-    // Hold the WebSocket Connection
+    /// Holds the WebSocket connection to WRAC.
+    ws_connection: Option<WsStream>,
 }
 
 impl WClient {
@@ -63,12 +62,10 @@ impl WClient {
     ///   * a full URL (`ws://host:port/path`, `wss://host:port/path`)
     ///   * or just `host:port` (path defaults to `/`).
     /// * `credentials` - The username and optional password.
-    /// * `connection` - The type of connection (`RAC` or `RACv2`).
     /// * `use_tls` forces `wss://` when the input lacks a scheme.
     pub fn new(
         address: String,
         credentials: Credentials,
-        connection: Connection,
         use_tls: bool,
     ) -> Self {
         Self {
@@ -77,7 +74,7 @@ impl WClient {
             use_tls,
             username: credentials.username,
             password: credentials.password,
-            connection,
+            ws_connection: None
         }
     }
 
@@ -103,13 +100,6 @@ impl WClient {
         self.address = address;
     }
 
-    /// Updates the client's connection type.
-    ///
-    /// This method allows you to change the type of connection to the RAC server.
-    pub fn update_connection(&mut self, connection: Connection) {
-        self.connection = connection;
-    }
-
     /// Turn the user‑supplied `address` into a valid WebSocket URL.
     fn build_url(&self) -> Result<String, ClientError> {
         if self.address.starts_with("ws://") || self.address.starts_with("wss://") {
@@ -128,25 +118,31 @@ impl WClient {
         Ok(ws)
     }
 
-    /// Tests the connection to the WRAC server.
-    ///
-    /// This method attempts to establish a WebSocket connection and returns `Ok(())` if successful.
-    pub async fn test_connection(&self) -> Result<(), ClientError> {
-        let mut ws = self.get_ws().await?;
-        ws.close(None).await.ok();
+    /// Initializes the connection to WRAC server.
+    pub async fn prepare(&mut self) -> Result<(), ClientError> {
+        self.ws_connection = Some(self.get_ws().await?);
         Ok(())
+    }
+
+    /// Checks if connection is established.
+    async fn check_connection(&self) -> Result<(), ClientError> {
+        if self.ws_connection.is_none() {
+            Err(ClientError::NoConnectionWRAC)
+        } else {
+            Ok(())
+        }
     }
 
     /// Registers a new user on the WRAC server.
     ///
-    /// This operation is only available for `RACv2` connections and requires a password.
-    ///
     /// # Errors
     ///
-    /// Returns `ClientError::IncorrectConnectionType` if not a `RACv2` connection.
+    /// Returns `ClientError::NoPassword` if no password specified for the client.
     /// Returns `ClientError::UsernameAlreadyTaken` if the username is already in use.
+    /// Returns `ClientError::UnexpectedResponse` if got unexpected response from server.
     pub async fn register_user(&mut self) -> Result<(), ClientError> {
-        if self.connection == Connection::RACv2 && self.password.is_some() {
+        self.check_connection().await?;
+        if self.password.is_some() {
             let mut ws = self.get_ws().await?;
             let payload = format!(
                 "\x03{}\n{}",
@@ -166,14 +162,15 @@ impl WClient {
             }
             return Ok(());
         }
-        Err(ClientError::IncorrectConnectionType)
+        Err(ClientError::NoPassword)
     }
 
     /// Fetches the total size of all messages on the server and updates the client's internal state.
     ///
     /// This is useful for determining the amount of data to fetch for all messages.
     pub async fn fetch_messages_size(&mut self) -> Result<(), ClientError> {
-        let mut ws = self.get_ws().await?;
+        self.check_connection().await?;
+        let ws = self.ws_connection.as_mut().unwrap();
         ws.send(Message::Binary(vec![0x00].into()))
             .await
             .map_err(|e| ClientError::WsSendError(e.to_string()))?;
@@ -200,7 +197,7 @@ impl WClient {
     pub async fn fetch_all_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
         // Fetching new size explicitly
         self.fetch_messages_size().await?;
-        let mut ws = self.get_ws().await?;
+        let ws = self.ws_connection.as_mut().unwrap();
         ws.send(Message::Binary(vec![0x01].into()))
             .await
             .map_err(|e| ClientError::WsSendError(e.to_string()))?;
@@ -227,20 +224,19 @@ impl WClient {
     /// stored size and retrieves only the difference. The client's internal message
     /// size tracker is updated upon successful fetch.
     pub async fn fetch_new_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
-        let old_size = self.current_messages_size;
+        let old_size = self.current_messages_size.clone();
         // Fetching new size via fetch_current_size because it's WRAC
         self.fetch_messages_size().await?;
+
         let new_size = self.current_messages_size;
         if old_size >= new_size {
             return Ok(Vec::new());
         }
         // Because the first one will be closed after our request.
-        let mut ws = self.get_ws().await?;
-        ws.send(Message::Binary(
-            format!("\x00\x02{}", self.current_messages_size).into(),
-        ))
-        .await
-        .map_err(|e| ClientError::WsSendError(e.to_string()))?;
+        let ws = self.ws_connection.as_mut().unwrap();
+        ws.send(Message::Binary(format!("\x00\x02{}", old_size).into()))
+            .await
+            .map_err(|e| ClientError::WsSendError(e.to_string()))?;
         let diff_msg = ws
             .next()
             .await
@@ -266,23 +262,23 @@ impl WClient {
     ///
     /// ```no_run
     /// # use rac_rs::async_wrac::WClient;
-    /// # use rac_rs::shared::{ClientError, Connection, Credentials};
+    /// # use rac_rs::shared::{ClientError, Credentials};
     /// # async fn run() -> Result<(), ClientError> {
-    /// # let client = WClient::new("".to_string(), Default::default(), Connection::RAC, false);
+    /// # let mut client = WClient::new("".to_string(), Default::default(), false);
     /// client.send_message("<{username}> Hello everyone!").await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn send_message(&self, message: &str) -> Result<(), ClientError> {
+    pub async fn send_message(&mut self, message: &str) -> Result<(), ClientError> {
         let msg = message.replace("{username}", &self.username);
         self.send_custom_message(&msg).await
     }
 
     /// Sends a raw message to the server without any modifications.
-    pub async fn send_custom_message(&self, message: &str) -> Result<(), ClientError> {
-        use tokio_tungstenite::tungstenite::protocol::Message;
-        let mut ws = self.get_ws().await?;
-        if self.connection == Connection::RACv2 && self.password.is_some() {
+    pub async fn send_custom_message(&mut self, message: &str) -> Result<(), ClientError> {
+        self.check_connection().await?;
+        let ws = self.ws_connection.as_mut().unwrap();
+        if self.password.is_some() {
             let payload = format!(
                 "\x02{}\n{}\n{}",
                 self.username,
@@ -308,17 +304,17 @@ impl WClient {
         Ok(())
     }
 
-    /// Resets the client's state to its default values.
-    ///
-    /// This clears the address, username, password, and message size, and sets the
-    /// connection type to `Connection::RAC` and `use_tls` to `false`.
-    pub fn reset(&mut self) {
+    /// Resets the client's state to its default values and closes WebSocket connection.
+    pub async fn reset(&mut self) {
         self.current_messages_size = 0;
         self.address.clear();
         self.username.clear();
         self.password = None;
-        self.connection = Connection::RAC;
         self.use_tls = false;
+        if let Some(ws) = &mut self.ws_connection {
+            let _ = ws.close(None).await;
+            self.ws_connection = None
+        }
     }
 
     /// Returns the current size of messages known to the client.
