@@ -26,7 +26,11 @@ pub enum ClientError {
     /// Failed to parse data received from the server.
     #[error("Failed to parse data: {0}")]
     ParseError(String),
-
+    
+    /// The server closed the connection while sending a packet.
+    #[error("Server closed the connection while sending a packet")]
+    ServerClosedConnection,
+    
     /// The specified user does not exist on the server (RACv2 only).
     #[error("User does not exist on the server")]
     UserDoesNotExist,

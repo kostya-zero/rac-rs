@@ -117,6 +117,15 @@ impl Client {
         }
     }
 
+    /// Removes null bytes from the data vector.
+    /// 
+    /// This is required because some servers that are written in C
+    /// may send null bytes in the response, which can cause issues
+    /// when parsing the response.
+    fn remove_nulls(data: &mut Vec<u8>) {
+        data.retain(|&x| x != 0);
+    }
+
     /// Tests the connection to the RAC server.
     ///
     /// This method attempts to establish a TCP connection and returns `Ok(())` if successful.
@@ -181,11 +190,17 @@ impl Client {
             .await
             .map_err(ClientError::StreamWriteError)?;
 
-        let mut buf = [0u8; 1024];
+        let mut buf = vec![0u8; 1024];
         let n = stream
             .read(&mut buf)
             .await
             .map_err(ClientError::StreamReadError)?;
+
+        if n == 0 {
+            return Err(ClientError::ServerClosedConnection);
+        }
+
+        Self::remove_nulls(&mut buf);
 
         // Then, converting it to utf8 and parsing the size to usize.
         let response = String::from_utf8_lossy(&buf[..n]);
@@ -211,11 +226,17 @@ impl Client {
             .write_all(&[0x00])
             .await
             .map_err(ClientError::StreamWriteError)?;
-        let mut head = [0u8; 1024];
+        let mut head = vec![0u8; 1024];
         let n = stream
             .read(&mut head)
             .await
             .map_err(ClientError::StreamReadError)?;
+        
+        if n == 0 {
+            return Err(ClientError::ServerClosedConnection);
+        }
+        
+        Self::remove_nulls(&mut head);
         let response = String::from_utf8_lossy(&head[..n]);
         let size = response
             .parse::<usize>()
@@ -233,6 +254,8 @@ impl Client {
             .read_exact(&mut buffer)
             .await
             .map_err(ClientError::StreamReadError)?;
+
+        Self::remove_nulls(&mut buffer);
 
         let response = String::from_utf8_lossy(&buffer).into_owned();
 
@@ -262,11 +285,18 @@ impl Client {
             .write_all(&[0x00])
             .await
             .map_err(ClientError::StreamWriteError)?;
-        let mut head = [0u8; 1024];
+        let mut head = vec![0u8; 1024];
         let n = stream
             .read(&mut head)
             .await
             .map_err(ClientError::StreamReadError)?;
+
+        if n == 0 {
+            return Err(ClientError::ServerClosedConnection);
+        }
+
+        Self::remove_nulls(&mut head);
+
         // Then, converting it to utf8 and parsing the size to usize.
         let response = String::from_utf8_lossy(&head[..n]);
         let size = response
@@ -285,6 +315,8 @@ impl Client {
             .await
             .map_err(ClientError::StreamReadError)?;
         let response = String::from_utf8_lossy(&buffer).into_owned();
+
+        Self::remove_nulls(&mut buffer);
 
         let vec_messages = response
             .lines()
@@ -353,7 +385,7 @@ impl Client {
             };
         }
 
-        // If the connection is RAC, we can send the message directly, without an attempt to authorize.
+        // If user is not authorized, we can send the message directly, without an attempt to authorize.
         stream
             .write_all(format!("\x01{}", message).as_bytes())
             .await
