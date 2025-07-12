@@ -14,8 +14,8 @@ A Rust client library for RAC (Real Address Chat) protocol.
 
 - Support for both `RAC` and `WRAC` protocols.
 - TLS support for secure connections.
-- Synchronous (`Client`) and Asynchronous (`async_client`) APIs.
-- User registration and authentication for `RACv2`.
+- Synchronous and Asynchronous APIs.
+- Uses RAC v2 specification.
 - Fetch all or only new messages.
 - Send messages with `{username}` placeholder replacement.
 - Comprehensive error handling via `ClientError`.
@@ -40,8 +40,8 @@ rac_rs = { git = "https://github.com/kostya-zero/rac-rs.git" }
 
 The crate APIs are split into separate features:
 
-- `client` - Synchronous client for RAC protocol.
-- `async_client` - Asynchronous client for RAC protocol.
+- `rac` - Synchronous client for RAC protocol.
+- `async_rac` - Asynchronous client for RAC protocol.
 - `wrac` - Synchronous client for WRAC protocol.
 - `async_wrac` - Asynchronous client for WRAC protocol.
 
@@ -49,10 +49,10 @@ All of these features are enabled by default.
 
 ## Usage
 
-Here is a basic example of how to use the synchronous `Client`.
+Here is a basic example of how to use the synchronous `RacClient`.
 
 ```rust
-use rac_rs::client::Client;
+use rac_rs::rac::RacClient;
 use rac_rs::shared::{ClientError,Credentials};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         password: Some("password123".to_string()),
     };
 
-    let mut client = Client::new(
+    let mut client = RacClient::new(
         "127.0.0.1:42666".to_string(), // Your RAC server address
         credentials,
         false
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     client.test_connection()?;
     println!("Successfully connected to the server.");
 
-    // Register a new user (only for RACv2)
+    // Register a new user
     // This might fail if the user already exists.
     match client.register_user() {
         Ok(()) => println!("User registered successfully!"),
@@ -107,6 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 ## Projects using `rac_rs`:
+
 - [Tower](https://github.com/kostya-zero/tower): A modern desktop client for RAC protocol built with Tauri.
 
 ## License
