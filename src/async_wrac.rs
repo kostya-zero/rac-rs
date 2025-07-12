@@ -3,7 +3,7 @@ use futures_util::{SinkExt, StreamExt};
 use std::borrow::Cow;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tungstenite::client::IntoClientRequest;
 
 /// WebSocket stream behind the scenes.
@@ -63,18 +63,14 @@ impl WClient {
     ///   * or just `host:port` (path defaults to `/`).
     /// * `credentials` - The username and optional password.
     /// * `use_tls` forces `wss://` when the input lacks a scheme.
-    pub fn new(
-        address: &str,
-        credentials: Credentials,
-        use_tls: bool,
-    ) -> Self {
+    pub fn new(address: &str, credentials: Credentials, use_tls: bool) -> Self {
         Self {
             current_messages_size: 0,
             address: address.to_string(),
             use_tls,
             username: credentials.username,
             password: credentials.password,
-            ws_connection: None
+            ws_connection: None,
         }
     }
 

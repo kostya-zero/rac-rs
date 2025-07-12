@@ -1,23 +1,23 @@
 ﻿use crate::shared::{ClientError, Credentials};
-use native_tls::TlsConnector;
 use std::borrow::Cow;
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::pin::Pin;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio_native_tls::TlsConnector;
 
-trait Io: Read + Write {}
-impl<T: Read + Write + ?Sized> Io for T {}
-
-type DynStream = Box<dyn Io + Send>;
+trait Io: AsyncRead + AsyncWrite {}
+impl<T: AsyncRead + AsyncWrite + ?Sized> Io for T {}
+type DynStream = Pin<Box<dyn Io + Send>>;
 
 /// A client for interacting with a RAC server.
 ///
 /// The `Client` provides methods to connect to a RAC server, send and receive messages,
-/// and manage user registration for `RACv2` connections.
+/// and manage user registration.
 ///
 /// # Example
 ///
 /// ```no_run
-/// use rac_rs::client::Client;
+/// use rac_rs::async_rac::RacClient;
 /// use rac_rs::shared::Credentials;
 ///
 /// let credentials = Credentials {
@@ -25,14 +25,14 @@ type DynStream = Box<dyn Io + Send>;
 ///     password: Some("password123".to_string()),
 /// };
 ///
-/// let mut client = Client::new(
-///     "127.0.0.1:1234",
+/// let mut client = RacClient::new(
+///     "127.0.0.1:42666",
 ///     credentials,
 ///     false
 /// );
 /// ```
 #[derive(Debug, Clone)]
-pub struct Client {
+pub struct RacClient {
     /// The current size of messages in the client.
     current_messages_size: usize,
     /// The address of the RAC server.
@@ -45,14 +45,13 @@ pub struct Client {
     use_tls: bool,
 }
 
-impl Client {
+impl RacClient {
     /// Creates a new `Client` instance.
     ///
     /// # Arguments
     ///
     /// * `address` - The address of the RAC server (e.g., "127.0.0.1:42666").
     /// * `credentials` - The username and optional password.
-    /// * `connection` - The type of connection (`RAC` or `RACv2`).
     /// * `use_tls` - Whether to use TLS encryption for the connection.
     pub fn new(address: &str, credentials: Credentials, use_tls: bool) -> Self {
         Self {
@@ -87,22 +86,34 @@ impl Client {
     }
 
     /// Attempts to establish a TCP connection to the RAC server.
-    fn get_stream(&self) -> Result<DynStream, ClientError> {
-        let stream = TcpStream::connect(&self.address).map_err(ClientError::ConnectionError)?;
+    async fn get_stream(&self) -> Result<DynStream, ClientError> {
+        let stream = TcpStream::connect(&self.address)
+            .await
+            .map_err(ClientError::ConnectionError)?;
 
-        if !self.use_tls {
-            return Ok(Box::new(stream));
+        if self.use_tls {
+            let connector = TlsConnector::from(
+                native_tls::TlsConnector::new()
+                    .map_err(|e| ClientError::TlsInitializationError(e.to_string()))?,
+            );
+
+            let domain =
+                self.address
+                    .split(':')
+                    .next()
+                    .ok_or(ClientError::TlsInitializationError(
+                        "Invalid address format".to_string(),
+                    ))?;
+
+            let tls_stream = connector
+                .connect(domain, stream)
+                .await
+                .map_err(|e| ClientError::TlsInitializationError(e.to_string()))?;
+
+            Ok(Box::pin(tls_stream))
+        } else {
+            Ok(Box::pin(stream))
         }
-
-        let domain = self.address.split(':').next().unwrap_or("localhost");
-
-        let connector =
-            TlsConnector::new().map_err(|e| ClientError::TlsInitializationError(e.to_string()))?;
-        let tls_stream = connector
-            .connect(domain, stream)
-            .map_err(|e| ClientError::TlsInitializationError(e.to_string()))?;
-
-        Ok(Box::new(tls_stream))
     }
 
     /// Removes null bytes from the data vector.
@@ -117,8 +128,8 @@ impl Client {
     /// Tests the connection to the RAC server.
     ///
     /// This method attempts to establish a TCP connection and returns `Ok(())` if successful.
-    pub fn test_connection(&self) -> Result<(), ClientError> {
-        self.get_stream()?;
+    pub async fn test_connection(&self) -> Result<(), ClientError> {
+        self.get_stream().await?;
         Ok(())
     }
 
@@ -129,9 +140,9 @@ impl Client {
     /// Returns `ClientError::NoPassword` if no password specified for the client.
     /// Returns `ClientError::UsernameAlreadyTaken` if the username is already in use.
     /// Returns `ClientError::UnexpectedResponse` if got unexpected response from server.
-    pub fn register_user(&mut self) -> Result<(), ClientError> {
+    pub async fn register_user(&mut self) -> Result<(), ClientError> {
         // Getting the TCP stream to the RAC server.
-        let mut stream = self.get_stream()?;
+        let mut stream = self.get_stream().await?;
 
         // Sending the username and password to the RAC server.
         if self.password.is_some() {
@@ -144,10 +155,12 @@ impl Client {
                     )
                     .as_bytes(),
                 )
+                .await
                 .map_err(ClientError::StreamWriteError)?;
             let mut buf = [0u8; 2];
             let n = stream
                 .read(&mut buf)
+                .await
                 .map_err(ClientError::StreamReadError)?;
             if n == 0 {
                 return Ok(());
@@ -165,19 +178,21 @@ impl Client {
 
     /// Fetches the total size of all messages on the server and updates the client's internal state.
     ///
-    /// This is useful for determining the amount of data if you want to know current size.
-    pub fn fetch_messages_size(&mut self) -> Result<(), ClientError> {
+    /// This is useful for determining the amount of data to fetch for all messages.
+    pub async fn fetch_messages_size(&mut self) -> Result<(), ClientError> {
         // Getting the TCP stream to the RAC server.
-        let mut stream = self.get_stream()?;
+        let mut stream = self.get_stream().await?;
 
         // Trying to send 0x00 byte to get the size of messages.
         stream
             .write_all(&[0x00])
+            .await
             .map_err(ClientError::StreamWriteError)?;
 
         let mut buf = vec![0u8; 1024];
         let n = stream
             .read(&mut buf)
+            .await
             .map_err(ClientError::StreamReadError)?;
 
         if n == 0 {
@@ -202,16 +217,18 @@ impl Client {
     ///
     /// This method retrieves all messages stored on the server and updates the
     /// client's internal message size tracker.
-    pub fn fetch_all_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
-        let mut stream = self.get_stream()?;
+    pub async fn fetch_all_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
+        let mut stream = self.get_stream().await?;
 
         // Sending 0x00 byte to get the size of messages.
         stream
             .write_all(&[0x00])
+            .await
             .map_err(ClientError::StreamWriteError)?;
         let mut head = vec![0u8; 1024];
         let n = stream
             .read(&mut head)
+            .await
             .map_err(ClientError::StreamReadError)?;
 
         if n == 0 {
@@ -219,7 +236,6 @@ impl Client {
         }
 
         Self::remove_nulls(&mut head);
-
         let response = String::from_utf8_lossy(&head[..n]);
         let size = response
             .parse::<usize>()
@@ -229,11 +245,13 @@ impl Client {
         // Sending 0x01 byte to get all messages.
         stream
             .write_all(&[0x01])
+            .await
             .map_err(ClientError::StreamWriteError)?;
 
         let mut buffer = vec![0u8; self.current_messages_size];
         stream
             .read_exact(&mut buffer)
+            .await
             .map_err(ClientError::StreamReadError)?;
 
         Self::remove_nulls(&mut buffer);
@@ -254,20 +272,22 @@ impl Client {
     /// This method compares the current message size on the server with the client's
     /// stored size and retrieves only the difference. The client's internal message
     /// size tracker is updated upon successful fetch.
-    pub fn fetch_new_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
+    pub async fn fetch_new_messages(&mut self) -> Result<Vec<Cow<str>>, ClientError> {
         // For this approach, we will not use fetch_messages_size function,
         // because it is necessary to fetch messages size AND THEN get new messages
         // IN THE SAME STREAM. Welcome to the Sugoma's bullshit protocol.
 
-        let mut stream = self.get_stream()?;
+        let mut stream = self.get_stream().await?;
 
         // Sending 0x00 byte to get the size of messages.
         stream
             .write_all(&[0x00])
+            .await
             .map_err(ClientError::StreamWriteError)?;
         let mut head = vec![0u8; 1024];
         let n = stream
             .read(&mut head)
+            .await
             .map_err(ClientError::StreamReadError)?;
 
         if n == 0 {
@@ -285,16 +305,17 @@ impl Client {
         // Now, we can get new messages.
         stream
             .write_all(format!("\x02{}", self.current_messages_size).as_bytes())
+            .await
             .map_err(ClientError::StreamWriteError)?;
 
         let mut buffer = vec![0u8; size - self.current_messages_size];
         stream
             .read_exact(&mut buffer)
+            .await
             .map_err(ClientError::StreamReadError)?;
+        let response = String::from_utf8_lossy(&buffer).into_owned();
 
         Self::remove_nulls(&mut buffer);
-
-        let response = String::from_utf8_lossy(&buffer).into_owned();
 
         let vec_messages = response
             .lines()
@@ -315,21 +336,21 @@ impl Client {
     /// # Example
     ///
     /// ```no_run
-    /// # use rac_rs::client::Client;
+    /// # use rac_rs::async_client::Client;
     /// # use rac_rs::shared::ClientError;
     /// # let mut client = Client::new("", Default::default(), false);
     /// client.send_message("<{username}> Hello everyone!")?;
     /// # Ok::<(), ClientError>(())
     /// ```
-    pub fn send_message(&self, message: &str) -> Result<(), ClientError> {
+    pub async fn send_message(&self, message: &str) -> Result<(), ClientError> {
         // Replacing the `{username}` placeholder with the actual username.
         let message = message.replace("{username}", &self.username);
-        self.send_custom_message(&message)
+        self.send_custom_message(&message).await
     }
 
     /// Sends a raw message to the server without any modifications.
-    pub fn send_custom_message(&self, message: &str) -> Result<(), ClientError> {
-        let mut stream = self.get_stream()?;
+    pub async fn send_custom_message(&self, message: &str) -> Result<(), ClientError> {
+        let mut stream = self.get_stream().await?;
 
         // Sending the message to the RAC server.
 
@@ -344,10 +365,12 @@ impl Client {
                     )
                     .as_bytes(),
                 )
+                .await
                 .map_err(ClientError::StreamWriteError)?;
-            let mut buf = [0u8; 2];
+            let mut buf = [0u8; 16];
             let n = stream
                 .read(&mut buf)
+                .await
                 .map_err(ClientError::StreamReadError)?;
             if n == 0 {
                 return Ok(());
@@ -361,9 +384,10 @@ impl Client {
             };
         }
 
-        // If the connection is RAC, we can send the message directly, without an attempt to authorize.
+        // If user is not authorized, we can send the message directly, without an attempt to authorize.
         stream
             .write_all(format!("\x01{}", message).as_bytes())
+            .await
             .map_err(ClientError::StreamWriteError)?;
 
         Ok(())
@@ -387,8 +411,6 @@ impl Client {
     }
 
     /// Returns the current state of TLS usage.
-    ///
-    /// This indicates whether the client is configured to use TLS for its connections.
     pub fn tls(&self) -> bool {
         self.use_tls
     }

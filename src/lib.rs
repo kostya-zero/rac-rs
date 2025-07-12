@@ -9,8 +9,8 @@
 //!
 //! This crate is split into separate features which provide different functionality:
 //!
-//! - `client` - Synchronous client for RAC protocol.
-//! - `async_client` - Asynchronous client for RAC protocol.
+//! - `rac` - Synchronous client for RAC protocol.
+//! - `async_rac` - Asynchronous client for RAC protocol.
 //! - `wrac` - Synchronous client for WRAC protocol.
 //! - `async_wrac` - Asynchronous client for WRAC protocol.
 //!
@@ -19,7 +19,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use rac_rs::client::Client;
+//! use rac_rs::rac::RacClient;
 //! use rac_rs::shared::Credentials;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,7 +28,7 @@
 //!         password: Some("password123".to_string()),
 //!     };
 //!
-//!     let mut client = Client::new(
+//!     let mut client = RacClient::new(
 //!         "127.0.0.1:42666".to_string(),
 //!         credentials,
 //!         false
@@ -37,8 +37,8 @@
 //!     // Test the connection
 //!     client.test_connection()?;
 //!
-//!     // Register a new user (for RACv2)
-//!     // client.register_user()?;
+//!     // Register a new user
+//!     client.register_user()?;
 //!
 //!     // Send a message
 //!     client.send_message("<{username}> Hello everyone!")?;
@@ -55,11 +55,11 @@
 
 /// Contains the client implementation for interacting with RAC servers.
 #[cfg(feature = "client")]
-pub mod client;
+pub mod rac;
 
 /// Contains the async client implementation for interacting with RAC servers.
 #[cfg(feature = "async_client")]
-pub mod async_client;
+pub mod async_rac;
 
 /// Contains shared type and utilities that's used across the library.
 pub mod shared;

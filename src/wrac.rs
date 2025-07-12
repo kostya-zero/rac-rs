@@ -1,7 +1,7 @@
 ﻿use crate::shared::{ClientError, Credentials};
 use std::borrow::Cow;
 use std::net::TcpStream;
-use tungstenite::{client::IntoClientRequest, connect, stream::MaybeTlsStream, Message, WebSocket};
+use tungstenite::{Message, WebSocket, client::IntoClientRequest, connect, stream::MaybeTlsStream};
 
 /// Concrete WebSocket stream type we deal with.
 type WsStream = WebSocket<MaybeTlsStream<TcpStream>>;
